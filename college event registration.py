@@ -322,34 +322,33 @@ with tab4:
     m1.info(f"🏆 **Most Popular Event:** {top_event}")
     m2.info(f"🏛️ **Top Participating Dept:** {top_dept}")
 
-    # Interactive Line Graph Chart
+    # Multi-color Horizontal Bar Chart
     event_counts = report_df["Event Name"].value_counts().reset_index()
     event_counts.columns = ["Event Name", "Registrations"]
 
-    fig_line = px.line(
+    fig_bar = px.bar(
         event_counts,
-        x="Event Name",
-        y="Registrations",
-        title="Total Registrations per Event Graph",
-        markers=True,  # Displays prominent markers at each point
+        x="Registrations",
+        y="Event Name",
+        orientation="h",
+        title="Total Registrations per Event",
         text="Registrations",
+        color="Event Name",  # Assigns a unique color per event bar
+        color_discrete_sequence=px.colors.qualitative.Set2,
     )
 
-    fig_line.update_traces(
-        textposition="top center",
-        line=dict(width=3, color="#2b5c8f"),
-        marker=dict(size=10, color="#d9534f"),
-    )
+    fig_bar.update_traces(textposition="outside")
 
-    fig_line.update_layout(
-        xaxis_title="Event Name",
-        yaxis_title="Number of Students",
-        showlegend=False,
-        height=380,
+    fig_bar.update_layout(
+        yaxis={"categoryorder": "total ascending"},
+        xaxis_title="Number of Students",
+        yaxis_title=None,
+        showlegend=False,  # Keeps chart area wide and clean
+        height=350,
         margin=dict(l=20, r=20, t=40, b=20),
     )
 
-    st.plotly_chart(fig_line, use_container_width=True)
+    st.plotly_chart(fig_bar, use_container_width=True)
 
   else:
     st.info("No registration data available yet for analytics.")
