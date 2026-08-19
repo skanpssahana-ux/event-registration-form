@@ -322,34 +322,32 @@ with tab4:
     m1.info(f"🏆 **Most Popular Event:** {top_event}")
     m2.info(f"🏛️ **Top Participating Dept:** {top_dept}")
 
-    # Stacked Column Chart (Event Name on X-axis, Department breakdown stacked on Y-axis)
-    stacked_df = (
-        report_df.groupby(["Event Name", "Department"])
-        .size()
-        .reset_index(name="Registrations")
-    )
+    # Column Chart with Gradient Color Intensity
+    event_counts = report_df["Event Name"].value_counts().reset_index()
+    event_counts.columns = ["Event Name", "Registrations"]
 
-    fig_stacked = px.bar(
-        stacked_df,
+    fig_column = px.bar(
+        event_counts,
         x="Event Name",
         y="Registrations",
-        color="Department",  # Stacks bars by Department
-        title="Registrations per Event by Department",
+        title="Total Registrations per Event",
         text="Registrations",
-        color_discrete_sequence=px.colors.qualitative.Set2,
+        color="Registrations",  # Continuous numerical value drives the color intensity
+        color_continuous_scale="Blues",  # Shades of blue (light blue = lower, dark blue = higher)
     )
 
-    fig_stacked.update_traces(textposition="inside")
+    fig_column.update_traces(textposition="outside")
 
-    fig_stacked.update_layout(
-        barmode="stack",
+    fig_column.update_layout(
+        xaxis={"categoryorder": "total descending"},
         xaxis_title="Event Name",
         yaxis_title="Number of Students",
-        height=400,
+        coloraxis_showscale=False,  # Hides the color scale bar for a clean look
+        height=380,
         margin=dict(l=20, r=20, t=40, b=20),
     )
 
-    st.plotly_chart(fig_stacked, use_container_width=True)
+    st.plotly_chart(fig_column, use_container_width=True)
 
   else:
     st.info("No registration data available yet for analytics.")
