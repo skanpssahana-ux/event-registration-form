@@ -322,7 +322,7 @@ with tab4:
     m1.info(f"🏆 **Most Popular Event:** {top_event}")
     m2.info(f"🏛️ **Top Participating Dept:** {top_dept}")
 
-    # Column Chart with Gradient Color Intensity
+    # Column Chart with High-Contrast Dark Gradient
     event_counts = report_df["Event Name"].value_counts().reset_index()
     event_counts.columns = ["Event Name", "Registrations"]
 
@@ -332,8 +332,8 @@ with tab4:
         y="Registrations",
         title="Total Registrations per Event",
         text="Registrations",
-        color="Registrations",  # Continuous numerical value drives the color intensity
-        color_continuous_scale="Blues",  # Shades of blue (light blue = lower, dark blue = higher)
+        color="Registrations",  # Value drives the dark color intensity
+        color_continuous_scale="Viridis",  # High-contrast dark gradient (Deep Purple -> Teal -> Gold)
     )
 
     fig_column.update_traces(textposition="outside")
@@ -342,7 +342,7 @@ with tab4:
         xaxis={"categoryorder": "total descending"},
         xaxis_title="Event Name",
         yaxis_title="Number of Students",
-        coloraxis_showscale=False,  # Hides the color scale bar for a clean look
+        coloraxis_showscale=False,  # Keep visual clutter low
         height=380,
         margin=dict(l=20, r=20, t=40, b=20),
     )
