@@ -322,9 +322,12 @@ with tab4:
     m1.info(f"🏆 **Most Popular Event:** {top_event}")
     m2.info(f"🏛️ **Top Participating Dept:** {top_dept}")
 
-    # Column Chart with High-Contrast Dark Gradient
+    # Column Chart with 5 Distinct Dark Colors
     event_counts = report_df["Event Name"].value_counts().reset_index()
     event_counts.columns = ["Event Name", "Registrations"]
+
+    # 5 High-Contrast Dark Colors: Dark Blue, Dark Purple, Dark Teal, Dark Burgundy, Dark Slate
+    dark_5_colors = ["#1f4e78", "#5b2c6f", "#0e6655", "#78281f", "#2c3e50"]
 
     fig_column = px.bar(
         event_counts,
@@ -332,8 +335,8 @@ with tab4:
         y="Registrations",
         title="Total Registrations per Event",
         text="Registrations",
-        color="Registrations",  # Value drives the dark color intensity
-        color_continuous_scale="Viridis",  # High-contrast dark gradient (Deep Purple -> Teal -> Gold)
+        color="Event Name",  # Colors mapped per event
+        color_discrete_sequence=dark_5_colors,  # Exactly 5 distinct dark colors
     )
 
     fig_column.update_traces(textposition="outside")
@@ -342,7 +345,7 @@ with tab4:
         xaxis={"categoryorder": "total descending"},
         xaxis_title="Event Name",
         yaxis_title="Number of Students",
-        coloraxis_showscale=False,  # Keep visual clutter low
+        showlegend=False,  # Keep visual clutter low
         height=380,
         margin=dict(l=20, r=20, t=40, b=20),
     )
