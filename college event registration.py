@@ -10,9 +10,17 @@ DB_NAME = "college_events_pure.db"
 # --- DATABASE LOGIC ---
 
 
+def get_connection():
+    """Helper to open a connection configured for multi-user concurrency."""
+    conn = sqlite3.connect(DB_NAME, timeout=30.0)
+    # Enable Write-Ahead Logging (WAL) mode for concurrent reads & writes
+    conn.execute("PRAGMA journal_mode=WAL;")
+    return conn
+
+
 def init_database():
     """Initializes database tables and seeds initial sample data if empty."""
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_connection() as conn:
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -117,7 +125,7 @@ def init_database():
 
 def get_db_data(query, params=()):
     """Helper function to fetch data into a pandas DataFrame safely."""
-    with sqlite3.connect(DB_NAME) as conn:
+    with get_connection() as conn:
         df = pd.read_sql_query(query, conn, params=params)
     return df
 
@@ -153,7 +161,7 @@ with st.sidebar.form(key="student_form", clear_on_submit=True):
     if submit_student:
         if new_id and new_name:
             try:
-                with sqlite3.connect(DB_NAME) as conn:
+                with get_connection() as conn:
                     cursor = conn.cursor()
                     cursor.execute(
                         "INSERT INTO students (student_id, dob, name, department) VALUES (?, ?, ?, ?)",
@@ -164,6 +172,10 @@ with st.sidebar.form(key="student_form", clear_on_submit=True):
                 st.rerun()
             except sqlite3.IntegrityError:
                 st.sidebar.error("Error: Student ID already exists.")
+            except sqlite3.OperationalError:
+                st.sidebar.error(
+                    "System busy processing another request. Please try submitting again."
+                )
         else:
             st.sidebar.error("Please fill out all fields.")
 
@@ -207,7 +219,10 @@ if student_options and event_options:
         event_id = event_options[selected_event_str]
 
     if st.button("Confirm & Process Registration", type="primary"):
-        with sqlite3.connect(DB_NAME) as conn:
+        try:
+            conn = get_connection()
+            # IMMEDIATE transaction locks the DB during checking and inserting to prevent simultaneous clash
+            conn.execute("BEGIN IMMEDIATE")
             cursor = conn.cursor()
 
             cursor.execute(
@@ -222,6 +237,7 @@ if student_options and event_options:
                 (student_id, int(event_id)),
             )
             if cursor.fetchone():
+                conn.rollback()
                 st.warning(
                     f"⚠️ User Notification: {student_name} is already registered for '{target_name}'!"
                 )
@@ -247,6 +263,7 @@ if student_options and event_options:
                         break
 
                 if has_time_clash:
+                    conn.rollback()
                     st.error(
                         f"❌ Schedule Conflict! Cannot register for '{target_name}'. It conflicts with '{clashing_event_name}' scheduled at the exact same time ({target_time})."
                     )
@@ -276,6 +293,12 @@ if student_options and event_options:
                     > *Please preserve a screenshot of this dashboard section as your entry pass.*
                     """)
                     st.rerun()
+        except sqlite3.OperationalError:
+            st.error(
+                "⚠️ Server busy processing another booking. Please click confirm again in a moment."
+            )
+        finally:
+            conn.close()
 else:
     st.info("Add students using the sidebar to get started.")
 
