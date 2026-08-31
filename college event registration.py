@@ -131,7 +131,7 @@ init_database()
 st.title("🎓 College Event Database Management System")
 st.markdown("---")
 
-# --- SIDEBAR: ADD NEW STUDENT & NEW EVENT ---
+# --- SIDEBAR: ADD NEW STUDENT ONLY ---
 st.sidebar.header("➕ Add New Student")
 with st.sidebar.form(key="student_form", clear_on_submit=True):
     new_id = st.text_input("Student ID (e.g., STU405)").strip()
@@ -166,39 +166,6 @@ with st.sidebar.form(key="student_form", clear_on_submit=True):
                 st.sidebar.error("Error: Student ID already exists.")
         else:
             st.sidebar.error("Please fill out all fields.")
-
-st.sidebar.markdown("---")
-
-# NEW SIDEBAR FORM: Create Custom Events directly from UI
-st.sidebar.header("➕ Create New Event")
-with st.sidebar.form(key="event_form", clear_on_submit=True):
-    new_event_name = st.text_input("Event Name (e.g., Robot War)")
-    new_category = st.selectbox(
-        "Category", ["Technical", "Cultural", "Sports", "Workshop"]
-    )
-    new_venue = st.text_input("Venue (e.g., Mini Auditorium)")
-    new_date = st.date_input("Event Date")
-    new_time = st.text_input("Time (e.g., 10:00)")
-
-    submit_event = st.form_submit_button("Add Event")
-
-    if submit_event:
-        if new_event_name and new_venue and new_time:
-            full_event_time = f"{new_date} {new_time}"
-            try:
-                with sqlite3.connect(DB_NAME) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO events (event_name, category, venue, event_time) VALUES (?, ?, ?, ?)",
-                        (new_event_name, new_category, new_venue, full_event_time),
-                    )
-                    conn.commit()
-                st.sidebar.success(f"Event '{new_event_name}' created!")
-                st.rerun()
-            except sqlite3.IntegrityError:
-                st.sidebar.error("Error: Event name already exists.")
-        else:
-            st.sidebar.error("Please fill out all event fields.")
 
 
 # --- METRICS DASHBOARD ---
@@ -338,7 +305,6 @@ with tab1:
     if not report_df.empty:
         st.dataframe(report_df, use_container_width=True, hide_index=True)
 
-        # Download button to export your generated dataset to CSV
         csv_data = report_df.to_csv(index=False).encode("utf-8")
         st.download_button(
             label="📥 Download Dataset as CSV",
@@ -368,7 +334,6 @@ with tab4:
         m1.info(f"🏆 **Most Popular Event:** {top_event}")
         m2.info(f"🏛️ **Top Participating Dept:** {top_dept}")
 
-        # Column Chart with 5 Distinct Dark Colors
         event_counts = report_df["Event Name"].value_counts().reset_index()
         event_counts.columns = ["Event Name", "Registrations"]
 
