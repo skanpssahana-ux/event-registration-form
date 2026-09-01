@@ -1,132 +1,23 @@
 from datetime import datetime
-import sqlite3
 import pandas as pd
 import plotly.express as px
+from sqlalchemy import create_engine, text
 import streamlit as st
 
-DB_NAME = "college_events_pure.db"
-
-
-# --- DATABASE LOGIC ---
+# Load connection string from secrets or local config
+DB_URL = st.secrets["postgres"]["url"]
 
 
 def get_connection():
-    """Helper to open a connection configured for multi-user concurrency."""
-    conn = sqlite3.connect(DB_NAME, timeout=30.0)
-    # Enable Write-Ahead Logging (WAL) mode for concurrent reads & writes
-    conn.execute("PRAGMA journal_mode=WAL;")
-    return conn
+    """Helper to open a connection to cloud PostgreSQL database."""
+    engine = create_engine(DB_URL, pool_pre_ping=True)
+    return engine.connect()
 
 
-def init_database():
-    """Initializes database tables and seeds initial sample data if empty."""
-    with get_connection() as conn:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS students (
-                student_id TEXT PRIMARY KEY,
-                dob TEXT NOT NULL,
-                name TEXT NOT NULL,
-                department TEXT NOT NULL
-            )
-        """)
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                event_name TEXT UNIQUE NOT NULL,
-                category TEXT NOT NULL,
-                venue TEXT NOT NULL,
-                event_time TEXT NOT NULL
-            )
-        """)
-
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS registrations (
-                registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id TEXT NOT NULL,
-                event_id INTEGER NOT NULL,
-                registration_date TEXT NOT NULL,
-                FOREIGN KEY (student_id) REFERENCES students (student_id),
-                FOREIGN KEY (event_id) REFERENCES events (event_id)
-            )
-        """)
-
-        # Populate default master events if empty
-        cursor.execute("SELECT COUNT(*) FROM events")
-        if cursor.fetchone()[0] == 0:
-            sample_events = [
-                (
-                    "Dance Competition",
-                    "Cultural",
-                    "Main Auditorium",
-                    "2026-07-15 10:00",
-                ),
-                (
-                    "Paper Presentation",
-                    "Technical",
-                    "Seminar Hall Block A",
-                    "2026-07-15 14:00",
-                ),
-                (
-                    "Music Concert",
-                    "Cultural",
-                    "Open Air Theatre (OAT)",
-                    "2026-07-16 18:00",
-                ),
-                (
-                    "Code Debugging",
-                    "Technical",
-                    "Lab 3, CSE Dept",
-                    "2026-07-16 11:30",
-                ),
-                (
-                    "AI Hackathon",
-                    "Technical",
-                    "Main Seminar Hall",
-                    "2026-07-15 10:00",
-                ),
-            ]
-            cursor.executemany(
-                "INSERT INTO events (event_name, category, venue, event_time) VALUES (?, ?, ?, ?)",
-                sample_events,
-            )
-
-        # Populate default students if empty
-        cursor.execute("SELECT COUNT(*) FROM students")
-        if cursor.fetchone()[0] == 0:
-            sample_students = [
-                ("STU401", "2004-05-12", "Niran J", "Computer Science"),
-                ("STU402", "2005-09-21", "Sarah Connor", "Information Technology"),
-                ("STU403", "2003-11-04", "Alex Mercer", "Electronics"),
-                ("STU404", "2004-02-18", "Rhea Ripley", "Mechanical"),
-            ]
-            cursor.executemany(
-                "INSERT INTO students (student_id, dob, name, department) VALUES (?, ?, ?, ?)",
-                sample_students,
-            )
-
-        # Seed initial registrations if empty
-        cursor.execute("SELECT COUNT(*) FROM registrations")
-        if cursor.fetchone()[0] == 0:
-            sample_regs = [
-                ("STU401", 1, "2026-07-01 09:30"),
-                ("STU401", 2, "2026-07-01 10:15"),
-                ("STU402", 3, "2026-07-02 11:00"),
-                ("STU403", 1, "2026-07-02 14:20"),
-                ("STU404", 4, "2026-07-03 16:45"),
-            ]
-            cursor.executemany(
-                "INSERT INTO registrations (student_id, event_id, registration_date) VALUES (?, ?, ?)",
-                sample_regs,
-            )
-
-
-def get_db_data(query, params=()):
+def get_db_data(query, params=None):
     """Helper function to fetch data into a pandas DataFrame safely."""
     with get_connection() as conn:
-        df = pd.read_sql_query(query, conn, params=params)
+        df = pd.read_sql_query(text(query), conn, params=params)
     return df
 
 
@@ -134,7 +25,6 @@ def get_db_data(query, params=()):
 st.set_page_config(
     page_title="College Event Portal", page_icon="🎓", layout="wide"
 )
-init_database()
 
 st.title("🎓 College Event Database Management System")
 st.markdown("---")
@@ -144,7 +34,11 @@ st.sidebar.header("➕ Add New Student")
 with st.sidebar.form(key="student_form", clear_on_submit=True):
     new_id = st.text_input("Student ID (e.g., STU405)").strip()
     new_name = st.text_input("Full Name")
-    new_dob = st.date_input("Date of Birth", min_value=datetime(2000, 1, 1))
+    new_dob = st.date_input(
+        "Date of Birth",
+        min_value=datetime(2001, 1, 1),
+        max_value=datetime.now(),
+    )
     new_dept = st.selectbox(
         "Department",
         [
@@ -162,23 +56,24 @@ with st.sidebar.form(key="student_form", clear_on_submit=True):
         if new_id and new_name:
             try:
                 with get_connection() as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "INSERT INTO students (student_id, dob, name, department) VALUES (?, ?, ?, ?)",
-                        (new_id, str(new_dob), new_name, new_dept),
+                    conn.execute(
+                        text(
+                            "INSERT INTO students (student_id, dob, name, department) VALUES (:id, :dob, :name, :dept)"
+                        ),
+                        {
+                            "id": new_id,
+                            "dob": str(new_dob),
+                            "name": new_name,
+                            "dept": new_dept,
+                        },
                     )
                     conn.commit()
                 st.sidebar.success(f"Profile created for {new_name}!")
                 st.rerun()
-            except sqlite3.IntegrityError:
-                st.sidebar.error("Error: Student ID already exists.")
-            except sqlite3.OperationalError:
-                st.sidebar.error(
-                    "System busy processing another request. Please try submitting again."
-                )
+            except Exception as e:
+                st.sidebar.error("Error: Student ID already exists or system busy.")
         else:
             st.sidebar.error("Please fill out all fields.")
-
 
 # --- METRICS DASHBOARD ---
 students_df = get_db_data("SELECT * FROM students")
@@ -220,85 +115,86 @@ if student_options and event_options:
 
     if st.button("Confirm & Process Registration", type="primary"):
         try:
-            conn = get_connection()
-            # IMMEDIATE transaction locks the DB during checking and inserting to prevent simultaneous clash
-            conn.execute("BEGIN IMMEDIATE")
-            cursor = conn.cursor()
+            with get_connection() as conn:
+                target_event = conn.execute(
+                    text(
+                        "SELECT event_name, event_time, venue FROM events WHERE event_id = :e_id"
+                    ),
+                    {"e_id": int(event_id)},
+                ).fetchone()
+                target_name, target_time, target_venue = target_event
 
-            cursor.execute(
-                "SELECT event_name, event_time, venue FROM events WHERE event_id = ?",
-                (int(event_id),),
-            )
-            target_event = cursor.fetchone()
-            target_name, target_time, target_venue = target_event
+                already_registered = conn.execute(
+                    text(
+                        "SELECT * FROM registrations WHERE student_id = :s_id AND event_id = :e_id"
+                    ),
+                    {"s_id": student_id, "e_id": int(event_id)},
+                ).fetchone()
 
-            cursor.execute(
-                "SELECT * FROM registrations WHERE student_id = ? AND event_id = ?",
-                (student_id, int(event_id)),
-            )
-            if cursor.fetchone():
-                conn.rollback()
-                st.warning(
-                    f"⚠️ User Notification: {student_name} is already registered for '{target_name}'!"
-                )
-            else:
-                cursor.execute(
-                    """
-                    SELECT e.event_name, e.event_time 
-                    FROM registrations r 
-                    JOIN events e ON r.event_id = e.event_id 
-                    WHERE r.student_id = ?
-                """,
-                    (student_id,),
-                )
-                existing_registrations = cursor.fetchall()
-
-                has_time_clash = False
-                clashing_event_name = ""
-
-                for registered_name, registered_time in existing_registrations:
-                    if registered_time == target_time:
-                        has_time_clash = True
-                        clashing_event_name = registered_name
-                        break
-
-                if has_time_clash:
-                    conn.rollback()
-                    st.error(
-                        f"❌ Schedule Conflict! Cannot register for '{target_name}'. It conflicts with '{clashing_event_name}' scheduled at the exact same time ({target_time})."
+                if already_registered:
+                    st.warning(
+                        f"⚠️ User Notification: {student_name} is already registered for '{target_name}'!"
                     )
                 else:
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    cursor.execute(
-                        "INSERT INTO registrations (student_id, event_id, registration_date) VALUES (?, ?, ?)",
-                        (student_id, int(event_id), now),
-                    )
-                    conn.commit()
+                    existing_registrations = conn.execute(
+                        text("""
+                        SELECT e.event_name, e.event_time 
+                        FROM registrations r 
+                        JOIN events e ON r.event_id = e.event_id 
+                        WHERE r.student_id = :s_id
+                    """),
+                        {"s_id": student_id},
+                    ).fetchall()
 
-                    st.balloons()
-                    st.success(
-                        "🎉 Registration Linkage Successfully Added to Pipeline!"
-                    )
+                    has_time_clash = False
+                    clashing_event_name = ""
 
-                    st.markdown(f"""
-                    > ### 📄 Official Registration Acknowledgement
-                    > **Date Issued:** {now}  
-                    > 
-                    > Dear **{student_name}** (`{student_id}`),  
-                    > Your seat booking has been officially confirmed. Below are your event assignment credentials:
-                    > * **Assigned Event Name:** {target_name}  
-                    > * **Official Scheduled Timing:** {target_time}  
-                    > * **Allocated Campus Venue:** {target_venue}  
-                    > 
-                    > *Please preserve a screenshot of this dashboard section as your entry pass.*
-                    """)
-                    st.rerun()
-        except sqlite3.OperationalError:
+                    for registered_name, registered_time in existing_registrations:
+                        if registered_time == target_time:
+                            has_time_clash = True
+                            clashing_event_name = registered_name
+                            break
+
+                    if has_time_clash:
+                        st.error(
+                            f"❌ Schedule Conflict! Cannot register for '{target_name}'. It conflicts with '{clashing_event_name}' scheduled at the exact same time ({target_time})."
+                        )
+                    else:
+                        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        conn.execute(
+                            text(
+                                "INSERT INTO registrations (student_id, event_id, registration_date) VALUES (:s_id, :e_id, :now)"
+                            ),
+                            {
+                                "s_id": student_id,
+                                "e_id": int(event_id),
+                                "now": now,
+                            },
+                        )
+                        conn.commit()
+
+                        st.balloons()
+                        st.success(
+                            "🎉 Registration Linkage Successfully Added to Pipeline!"
+                        )
+
+                        st.markdown(f"""
+                        > ### 📄 Official Registration Acknowledgement
+                        > **Date Issued:** {now}  
+                        > 
+                        > Dear **{student_name}** (`{student_id}`),  
+                        > Your seat booking has been officially confirmed. Below are your event assignment credentials:
+                        > * **Assigned Event Name:** {target_name}  
+                        > * **Official Scheduled Timing:** {target_time}  
+                        > * **Allocated Campus Venue:** {target_venue}  
+                        > 
+                        > *Please preserve a screenshot of this dashboard section as your entry pass.*
+                        """)
+                        st.rerun()
+        except Exception as e:
             st.error(
-                "⚠️ Server busy processing another booking. Please click confirm again in a moment."
+                "⚠️ Server busy processing another booking. Please try again."
             )
-        finally:
-            conn.close()
 else:
     st.info("Add students using the sidebar to get started.")
 
@@ -314,9 +210,9 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 report_query = """
-    SELECT r.registration_id as [Reg ID], s.student_id as [Student ID], s.name as [Student Name], 
-           s.department as [Department], e.event_name as [Event Name], e.category as [Category], 
-           e.venue as [Venue], e.event_time as [Scheduled Time], r.registration_date as [Processed At]
+    SELECT r.registration_id as "Reg ID", s.student_id as "Student ID", s.name as "Student Name", 
+           s.department as "Department", e.event_name as "Event Name", e.category as "Category", 
+           e.venue as "Venue", e.event_time as "Scheduled Time", r.registration_date as "Processed At"
     FROM registrations r
     JOIN students s ON r.student_id = s.student_id
     JOIN events e ON r.event_id = e.event_id
