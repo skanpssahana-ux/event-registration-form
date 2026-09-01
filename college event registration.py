@@ -1,25 +1,8 @@
 from datetime import datetime
 import pandas as pd
 import plotly.express as px
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 import streamlit as st
-
-# Load connection string from secrets or local config
-DB_URL = st.secrets["postgres"]["url"]
-
-
-def get_connection():
-    """Helper to open a connection to cloud PostgreSQL database."""
-    engine = create_engine(DB_URL, pool_pre_ping=True)
-    return engine.connect()
-
-
-def get_db_data(query, params=None):
-    """Helper function to fetch data into a pandas DataFrame safely."""
-    with get_connection() as conn:
-        df = pd.read_sql_query(text(query), conn, params=params)
-    return df
-
 
 # --- STREAMLIT UI CONFIG ---
 st.set_page_config(
@@ -28,6 +11,20 @@ st.set_page_config(
 
 st.title("🎓 College Event Database Management System")
 st.markdown("---")
+
+# --- INSTANT DATABASE CONNECTION POOLING ---
+db = st.connection("postgres", type="sql")
+
+
+def get_connection():
+    """Helper to acquire an active connection session from Streamlit's pool instantly."""
+    return db.session
+
+
+def get_db_data(query, params=None):
+    """Helper function to fetch data safely using cached connection pooling."""
+    return db.query(query, params=params, ttl=0)
+
 
 # --- SIDEBAR: ADD NEW STUDENT ONLY ---
 st.sidebar.header("➕ Add New Student")
@@ -76,9 +73,9 @@ with st.sidebar.form(key="student_form", clear_on_submit=True):
             st.sidebar.error("Please fill out all fields.")
 
 # --- METRICS DASHBOARD ---
-students_df = get_db_data("SELECT * FROM students")
-events_df = get_db_data("SELECT * FROM events")
-reg_df = get_db_data("SELECT * FROM registrations")
+students_df = get_db_data("SELECT * FROM students;")
+events_df = get_db_data("SELECT * FROM events;")
+reg_df = get_db_data("SELECT * FROM registrations;")
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Profiles Verified", len(students_df))
