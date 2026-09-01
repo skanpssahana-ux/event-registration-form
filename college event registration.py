@@ -1,7 +1,7 @@
 from datetime import datetime
 import pandas as pd
 import plotly.express as px
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 import streamlit as st
 
 # --- STREAMLIT UI CONFIG ---
@@ -12,18 +12,27 @@ st.set_page_config(
 st.title("🎓 College Event Database Management System")
 st.markdown("---")
 
-# --- INSTANT DATABASE CONNECTION POOLING ---
-db = st.connection("postgres", type="sql")
+# --- CACHED PERSISTENT DATABASE ENGINE ---
+@st.cache_resource
+def get_db_engine():
+    """Create and cache the database engine to maintain persistent connection pooling."""
+    return create_engine(
+        st.secrets["postgres"]["url"], 
+        pool_pre_ping=True, 
+        pool_size=10, 
+        max_overflow=20
+    )
 
+engine = get_db_engine()
 
 def get_connection():
-    """Helper to acquire an active connection session from Streamlit's pool instantly."""
-    return db.session
-
+    """Acquire an active connection from the persistent connection pool."""
+    return engine.connect()
 
 def get_db_data(query, params=None):
-    """Helper function to fetch data safely using cached connection pooling."""
-    return db.query(query, params=params, ttl=0)
+    """Fetch data into Pandas using the persistent connection pool."""
+    with get_connection() as conn:
+        return pd.read_sql_query(text(query), conn, params=params)
 
 
 # --- SIDEBAR: ADD NEW STUDENT ONLY ---
